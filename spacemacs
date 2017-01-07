@@ -19,12 +19,16 @@ values."
    dotspacemacs-configuration-layers
    '(
      clojure
+     (c-c++ :variables
+            c-c++-enable-clang-support t
+            c-c++-default-mode-for-headers 'c++-mode)
      ;; ----------------------------------------------------------------
      ;; Example of useful layers you may want to use right away.
      ;; Uncomment some layer names and press <SPC f e R> (Vim style) or
      ;; <M-m f e R> (Emacs style) to install them.
      ;; ----------------------------------------------------------------
      vimscript
+     ;vim-powerline
      (auto-completion :variables
                       auto-completion-enable-help-tooltip t
                       auto-completion-enable-snippets-in-popup t
@@ -120,13 +124,11 @@ values."
    ;; List of themes, the first of the list is loaded when spacemacs starts.
    ;; Press <SPC> T n to cycle to the next theme in the list (works great
    ;; with 2 themes variants, one dark and one light)
-   dotspacemacs-themes '(material
-                         spacemacs-dark
+   dotspacemacs-themes '(spacemacs-dark
                          spacemacs-light
+                         material
                          solarized-light
                          solarized-dark
-                         material-light
-                         monokai
                          zenburn)
    ;; If non nil the cursor color matches the state color in GUI Emacs.
    dotspacemacs-colorize-cursor-according-to-state t
@@ -266,26 +268,19 @@ executes.
  This function is mostly useful for variables that need to be set
 before packages are loaded. If you are unsure, you should try in setting them in
 `dotspacemacs/user-config' first."
-  ;; for erlang
-  (setq erlang-root-dir "/opt/erlang/r19.0/lib/erts-8.0")
-  (add-to-list 'exec-path "/opt/erlang/r19.0/erts-8.0/bin")
-  ; https://github.com/DBoroujerdi/erlang-plus
-  (setq-default dotspacemacs-configuration-layers '(erlang+))
-  ;; python
-  (add-hook 'python-mode-hook 'py-yapf-enable-on-save)
-  (setq python-shell-interpreter "/usr/local/bin/ipython3")
-  (setq python-check-command "/usr/local/bin/pyflakes")
-  ;; for haskell
-  (add-hook 'haskell-mode-hook 'turn-on-haskell-indentation)
-  (add-to-list 'exec-path "~/Library/Haskell/bin/")
-  (add-hook 'haskell-mode-hook 'structured-haskell-mode)
-  (setq haskell-enable-shm-support t
-        company-ghc-turn-on-autoscan t
-        shm-use-presentation-mode t
-        haskell-tags-on-save nil)
+
   ;; tool bar and menu bar
   (tool-bar-mode 1)
   (menu-bar-mode 1)
+  ;; environment
+  (setq exec-path-from-shell-arguments '("-l"))
+
+  ;; custom settings
+  ;; write custom settings to a separate file instead of this
+  (setq custom-file (expand-file-name ".custom-settings.el" user-emacs-directory))
+  (when (file-exists-p custom-file)
+    (load custom-file))
+
   )
 
 (defun dotspacemacs/user-config ()
@@ -299,8 +294,92 @@ you should place your code here."
   (setq powerline-default-separator 'arrow)
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;; YouCompleteMe configuration setup                                     ;;
+  ;; erlang                                                                ;;
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  (setq erlang-root-dir "/usr/local/opt/erlang/lib/erlang")
+  ;(add-to-list 'exec-path "/usr/local/opt/erlang/lib/erlang/bin")
+  (set 'erlang-bin (concat erlang-root-dir "/bin/"))
+  (set 'erlang-lib (concat erlang-root-dir "/lib/"))
+  (add-to-list 'exec-path (cons erlang-bin exec-path))
+  ; https://github.com/DBoroujerdi/erlang-plus
+  (setq-default dotspacemacs-configuration-layers '(erlang+))
+  (add-hook 'erlang-mode-hook 'my-erlang-mode-hook)
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;;;; distel setup for erlang code auto-completion                              ;;;;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  (let ((distel-dir "/opt/erlang/distel/elisp"))
+      (unless (member distel-dir load-path)
+        ;; add distel-dir to the end of load-path
+        (setq load-path (append load-path (list distel-dir)))))
+
+  ; prevent annoying hang-on-compile
+  (defvar inferior-erlang-prompt-timeout t)
+
+  ; {{{
+  ; distel-node erlang node connection launch with (^C-^D-n)
+  (when (locate-library "distel")
+    (require 'distel)
+    (distel-setup)
+    (add-hook 'erlang-mode-hook
+              '(lambda ()
+                 (unless erl-nodename-cache
+                   (distel-load-shell))))
+
+    (defun distel-load-shell ()
+      "Load/reload the erlang shell connection to a distel node. "
+      (interactive)
+      ;; set the default erlang node name to which distel connects
+      (setq erl-nodename-cache 'distel@localhost)
+      (setq distel-modeline-node "distel")
+      (force-mode-line-update)
+      ;; start up an inferior erlang with node name `distel'
+      (let ((file-buffer (current-buffer))
+            (file-window (selected-window)))
+        (setq inferior-erlang-machine-options '("-name" "distel@localhost"))
+        (switch-to-buffer-other-window file-buffer)
+        (inferior-erlang)
+        (select-window file-window)
+        (switch-to-buffer file-buffer))))
+  ; }}}
+
+  (defun my-erlang-mode-hook ()
+    ;; when starting an Erlang shell in Emacs, default in the node name
+    (setq inferior-erlang-machine-options '("-name" "distel@localhost"))
+    ;; add Erlang functions to an imenu menu
+    (imenu-add-to-menubar "imenu")
+    ;; customize keys
+    (local-set-key [return] 'newline-and-indent))
+
+  (add-hook 'erlang-mode-hook 'folding-erlang-mode-hook)
+  (defun folding-erlang-mode-hook ()
+    (setq hs-special-modes-alist
+          (cons '(erlang-mode
+                  "^\\([a-z][a-zA-Z0-9_]*\\|'[^\n']*[^\\]'\\)\\s *(" nil "%"
+                  erlang-end-of-clause) hs-special-modes-alist))
+    (hs-minor-mode 1)
+    (local-set-key [?\M-s] 'hs-toggle-hiding)
+    (local-set-key [?\M-h] 'hs-hide-all)
+    (local-set-key [?\M-u] 'hs-show-all))
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; for haskell                                                           ;;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  (add-hook 'haskell-mode-hook 'turn-on-haskell-indentation)
+  (add-to-list 'exec-path "~/Library/Haskell/bin/")
+  (add-hook 'haskell-mode-hook 'structured-haskell-mode)
+  (setq haskell-enable-shm-support t
+        company-ghc-turn-on-autoscan t
+        shm-use-presentation-mode t
+        haskell-tags-on-save nil)
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; Python & YouCompleteMe configuration setup                            ;;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  (add-hook 'python-mode-hook 'py-yapf-enable-on-save)
+  (setq python-shell-interpreter "/usr/local/bin/ipython3")
+  (setq python-check-command "/usr/local/bin/pyflakes")
+
   (add-hook 'ycmd-mode-hook 'company-ycmd-setup)
   (add-hook 'ycmd-mode-hook 'flycheck-ycmd-setup)
   ;(global-ycmd-mode)
@@ -328,20 +407,3 @@ you should place your code here."
 
 ;; Do not write anything past this comment. This is where Emacs will
 ;; auto-generate custom variable definitions.
-(custom-set-variables
- ;; custom-set-variables was added by Custom.
- ;; If you edit it by hand, you could mess it up, so be careful.
- ;; Your init file should contain only one such instance.
- ;; If there is more than one, they won't work right.
- '(custom-safe-themes
-   (quote
-    ("38e64ea9b3a5e512ae9547063ee491c20bd717fe59d9c12219a0b1050b439cdd" default)))
- '(package-selected-packages
-   (quote
-    (gitignore-mode git-commit git-gutter-fringe+ git-gutter-fringe fringe-helper git-gutter+ git-gutter diff-hl zonokai-theme zenburn-theme zen-and-art-theme yapfify xterm-color ws-butler window-numbering which-key volatile-highlights vimrc-mode vi-tilde-fringe uuidgen use-package underwater-theme ujelly-theme twilight-theme twilight-bright-theme twilight-anti-bright-theme tronesque-theme toxi-theme toc-org tao-theme tangotango-theme tango-plus-theme tango-2-theme sunny-day-theme sublime-themes subatomic256-theme subatomic-theme spacemacs-theme spaceline spacegray-theme soothe-theme soft-stone-theme soft-morning-theme soft-charcoal-theme smyx-theme smeargle shm shell-pop seti-theme reverse-theme restart-emacs rainbow-mode rainbow-identifiers rainbow-delimiters railscasts-theme quelpa pyvenv pytest pyenv-mode py-isort purple-haze-theme professional-theme popwin planet-theme pip-requirements phoenix-dark-pink-theme phoenix-dark-mono-theme persp-mode pcre2el pastels-on-dark-theme paradox orgit organic-green-theme org-projectile org-present org-pomodoro org-plus-contrib org-download org-bullets open-junk-file omtose-phellack-theme oldlace-theme occidental-theme obsidian-theme ob-elixir noflet noctilux-theme niflheim-theme neotree naquadah-theme mwim mustang-theme multi-term move-text monokai-theme monochrome-theme molokai-theme moe-theme mmm-mode minimal-theme material-theme markdown-toc majapahit-theme magit-gitflow macrostep lush-theme lorem-ipsum live-py-mode linum-relative link-hint light-soap-theme jbeans-theme jazz-theme ir-black-theme intero inkpot-theme info+ indent-guide ido-vertical-mode hy-mode hungry-delete htmlize hlint-refactor hl-todo hindent highlight-parentheses highlight-numbers highlight-indentation hide-comnt heroku-theme hemisu-theme help-fns+ helm-themes helm-swoop helm-pydoc helm-projectile helm-mode-manager helm-make helm-hoogle helm-gitignore helm-flx helm-descbinds helm-company helm-c-yasnippet helm-ag hc-zenburn-theme haskell-snippets gruvbox-theme gruber-darker-theme grandshell-theme gotham-theme google-translate golden-ratio gnuplot gitconfig-mode gitattributes-mode git-timemachine git-messenger git-link gh-md gandalf-theme flyspell-correct-helm flycheck-ycmd flycheck-pos-tip flycheck-mix flycheck-haskell flx-ido flatui-theme flatland-theme firebelly-theme fill-column-indicator farmhouse-theme fancy-battery eyebrowse expand-region exec-path-from-shell evil-visualstar evil-visual-mark-mode evil-unimpaired evil-tutor evil-surround evil-search-highlight-persist evil-numbers evil-nerd-commenter evil-mc evil-matchit evil-magit evil-lisp-state evil-indent-plus evil-iedit-state evil-exchange evil-escape evil-ediff evil-args evil-anzu espresso-theme eshell-z eshell-prompt-extras esh-help erlang ensime elisp-slime-nav dumb-jump dracula-theme django-theme define-word darktooth-theme darkokai-theme darkmine-theme darkburn-theme dakrone-theme dactyl-mode cython-mode cyberpunk-theme company-ycmd company-statistics company-quickhelp company-ghci company-ghc company-cabal company-anaconda column-enforce-mode color-theme-sanityinc-tomorrow color-theme-sanityinc-solarized color-identifiers-mode cmm-mode clues-theme clojure-snippets clj-refactor clean-aindent-mode cider-eval-sexp-fu cherry-blossom-theme busybee-theme bubbleberry-theme birds-of-paradise-plus-theme badwolf-theme auto-yasnippet auto-highlight-symbol auto-dictionary auto-compile apropospriate-theme anti-zenburn-theme ample-zen-theme ample-theme alect-themes alchemist aggressive-indent afternoon-theme adaptive-wrap ace-window ace-link ace-jump-helm-line ac-ispell))))
-(custom-set-faces
- ;; custom-set-faces was added by Custom.
- ;; If you edit it by hand, you could mess it up, so be careful.
- ;; Your init file should contain only one such instance.
- ;; If there is more than one, they won't work right.
- )
