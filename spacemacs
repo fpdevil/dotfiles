@@ -18,6 +18,10 @@ values."
    ;; of a list then all discovered layers will be installed.
    dotspacemacs-configuration-layers
    '(
+     go
+     (javascript :variables
+                 tern-command '("node" "/usr/local/bin/tern"))
+     html
      clojure
      (c-c++ :variables
             c-c++-enable-clang-support t
@@ -124,9 +128,9 @@ values."
    ;; List of themes, the first of the list is loaded when spacemacs starts.
    ;; Press <SPC> T n to cycle to the next theme in the list (works great
    ;; with 2 themes variants, one dark and one light)
-   dotspacemacs-themes '(spacemacs-dark
+   dotspacemacs-themes '(material
+                         spacemacs-dark
                          spacemacs-light
-                         material
                          solarized-light
                          solarized-dark
                          zenburn)
@@ -274,6 +278,8 @@ before packages are loaded. If you are unsure, you should try in setting them in
   (menu-bar-mode 1)
   ;; environment
   (setq exec-path-from-shell-arguments '("-l"))
+  (setenv "PATH" (concat (getenv "PATH") ":/usr/local/bin"))
+  (setq exec-path (append exec-path '("/usr/local/bin")))
 
   ;; custom settings
   ;; write custom settings to a separate file instead of this
@@ -292,6 +298,10 @@ explicitly specified that a variable should be set before a package is loaded,
 you should place your code here."
   (global-company-mode)
   (setq powerline-default-separator 'arrow)
+
+  ;; javascript settings
+  (setq-default js2-basic-offset 2)
+  (setq-default js-indent-level 2)
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; erlang                                                                ;;
