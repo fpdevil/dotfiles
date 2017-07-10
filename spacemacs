@@ -18,9 +18,11 @@ values."
    ;; of a list then all discovered layers will be installed.
    dotspacemacs-configuration-layers
    '(
+     osx
      go
      (javascript :variables
-                 tern-command '("node" "/usr/local/bin/tern"))
+                 tern-command '("node" "/usr/local/bin/tern")
+                 javascript-disable-tern-port-files nil)
      html
      clojure
      (c-c++ :variables
@@ -41,7 +43,9 @@ values."
      emacs-lisp
      git
      markdown
-     org
+     (org :variables
+          org-enable-reveal-js-support t
+          org-enable-github-support t)
      (shell :variables
             shell-default-height 30
             shell-default-position 'bottom)
@@ -59,9 +63,15 @@ values."
               haskell-enable-hindent-style "johan-tibell")
      (python :variables
              python-enable-yapf-format-on-save t)
+     (geolocation :variables
+                  geolocation-enable-location-service t
+                  geolocation-enable-weather-forecast t)
      version-control
      scala
      themes-megapack
+     imenu-list
+     command-log
+     plantuml
      )
    ;; List of additional packages that will be installed without being
    ;; wrapped in a layer. If you need some configuration for these
@@ -69,10 +79,12 @@ values."
    ;; configuration in `dotspacemacs/user-config'.
    dotspacemacs-additional-packages
    '(
+     dired+
      shm
      ycmd
      company-ycmd
      flycheck-ycmd
+     edts
     )
    ;; A list of packages and/or extensions that will not be install and loaded.
    dotspacemacs-excluded-packages '()
@@ -128,12 +140,25 @@ values."
    ;; List of themes, the first of the list is loaded when spacemacs starts.
    ;; Press <SPC> T n to cycle to the next theme in the list (works great
    ;; with 2 themes variants, one dark and one light)
-   dotspacemacs-themes '(material
-                         spacemacs-dark
+   dotspacemacs-themes '(
                          spacemacs-light
-                         solarized-light
-                         solarized-dark
-                         zenburn)
+                         spacemacs-dark
+                         material-light
+                         zonokai-blue
+                         sanityinc-solarized-light
+                         zenburn
+                         sanityinc-tomorrow-day
+                         majapahit-dark
+                         majapahit-light
+                         spolsky
+                         farmhouse-light
+                         monokai
+                         cherry-blossom
+                         cyberpunk
+                         material
+                         molokai
+                         grandshell
+                       )
    ;; If non nil the cursor color matches the state color in GUI Emacs.
    dotspacemacs-colorize-cursor-according-to-state t
    ;; Default font. `powerline-scale' allows to quickly tweak the mode-line
@@ -262,7 +287,7 @@ values."
    ;; `trailing' to delete only the whitespace at end of lines, `changed'to
    ;; delete only whitespace for changed lines or `nil' to disable cleanup.
    ;; (default nil)
-   dotspacemacs-whitespace-cleanup nil
+   dotspacemacs-whitespace-cleanup 'trailing
    ))
 
 (defun dotspacemacs/user-init ()
@@ -287,6 +312,13 @@ before packages are loaded. If you are unsure, you should try in setting them in
   (when (file-exists-p custom-file)
     (load custom-file))
 
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; for erlang                                                            ;;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  (setq erlang-root-dir "/usr/local/opt/erlang/lib/erlang")
+  (setq exec-path-from-shell-check-startup-files nil)
+  (set 'erlang-bin (concat erlang-root-dir "/bin/"))
+  (set 'erlang-lib (concat erlang-root-dir "/lib/"))
   )
 
 (defun dotspacemacs/user-config ()
@@ -297,80 +329,44 @@ This is the place where most of your configurations should be done. Unless it is
 explicitly specified that a variable should be set before a package is loaded,
 you should place your code here."
   (global-company-mode)
+
+  ;; for Powerline separator
   (setq powerline-default-separator 'arrow)
+
+  ;; org clock mode line support
+  (setq spaceline-org-clock-p t)
 
   ;; javascript settings
   (setq-default js2-basic-offset 2)
   (setq-default js-indent-level 2)
 
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;; erlang                                                                ;;
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  (setq erlang-root-dir "/usr/local/opt/erlang/lib/erlang")
-  ;(add-to-list 'exec-path "/usr/local/opt/erlang/lib/erlang/bin")
-  (set 'erlang-bin (concat erlang-root-dir "/bin/"))
-  (set 'erlang-lib (concat erlang-root-dir "/lib/"))
+  ;; Erlang
   (add-to-list 'exec-path (cons erlang-bin exec-path))
-  ; https://github.com/DBoroujerdi/erlang-plus
-  (setq-default dotspacemacs-configuration-layers '(erlang+))
-  (add-hook 'erlang-mode-hook 'my-erlang-mode-hook)
+  (add-hook 'after-init-hook 'my-after-init-hook)
+  (defun my-after-init-hook ()
+    (require 'edts-start))
+  ;; handle the xemacs warnings
+  (defconst erlang-xemacs-p (string-match "Lucid\\|XEmacs" emacs-version)
+    "Non-nil when running under XEmacs or Lucid Emacs.")
 
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;;;; distel setup for erlang code auto-completion                              ;;;;
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  (let ((distel-dir "/opt/erlang/distel/elisp"))
-      (unless (member distel-dir load-path)
-        ;; add distel-dir to the end of load-path
-        (setq load-path (append load-path (list distel-dir)))))
+  (defvar erlang-xemacs-popup-menu '("Erlang Mode Commands" . nil)
+    "Common popup menu for all buffers in Erlang mode. This variable is
+  destructively modified every time the Erlang menu is modified. The
+  effect is that all changes take effect in all buffers in Erlang mode,
+  just like under GNU Emacs. Never EVER set this variable!")
 
-  ; prevent annoying hang-on-compile
-  (defvar inferior-erlang-prompt-timeout t)
+  ;; Wrangler Erlang refactorer
+  (add-to-list 'load-path "/usr/local/lib/erlang/lib/wrangler-1.2.0/elisp")
+  (require 'wrangler)
 
-  ; {{{
-  ; distel-node erlang node connection launch with (^C-^D-n)
-  (when (locate-library "distel")
-    (require 'distel)
-    (distel-setup)
-    (add-hook 'erlang-mode-hook
-              '(lambda ()
-                 (unless erl-nodename-cache
-                   (distel-load-shell))))
-
-    (defun distel-load-shell ()
-      "Load/reload the erlang shell connection to a distel node. "
-      (interactive)
-      ;; set the default erlang node name to which distel connects
-      (setq erl-nodename-cache 'distel@localhost)
-      (setq distel-modeline-node "distel")
-      (force-mode-line-update)
-      ;; start up an inferior erlang with node name `distel'
-      (let ((file-buffer (current-buffer))
-            (file-window (selected-window)))
-        (setq inferior-erlang-machine-options '("-name" "distel@localhost"))
-        (switch-to-buffer-other-window file-buffer)
-        (inferior-erlang)
-        (select-window file-window)
-        (switch-to-buffer file-buffer))))
-  ; }}}
-
-  (defun my-erlang-mode-hook ()
-    ;; when starting an Erlang shell in Emacs, default in the node name
-    (setq inferior-erlang-machine-options '("-name" "distel@localhost"))
-    ;; add Erlang functions to an imenu menu
-    (imenu-add-to-menubar "imenu")
-    ;; customize keys
-    (local-set-key [return] 'newline-and-indent))
-
-  (add-hook 'erlang-mode-hook 'folding-erlang-mode-hook)
-  (defun folding-erlang-mode-hook ()
-    (setq hs-special-modes-alist
-          (cons '(erlang-mode
-                  "^\\([a-z][a-zA-Z0-9_]*\\|'[^\n']*[^\\]'\\)\\s *(" nil "%"
-                  erlang-end-of-clause) hs-special-modes-alist))
-    (hs-minor-mode 1)
-    (local-set-key [?\M-s] 'hs-toggle-hiding)
-    (local-set-key [?\M-h] 'hs-hide-all)
-    (local-set-key [?\M-u] 'hs-show-all))
+  (spacemacs/declare-prefix-for-mode 'erlang-mode "w" "wrangler-prefix")
+  (spacemacs/set-leader-keys-for-major-mode 'erlang-mode "wt" 'toggle-erlang-wrangler)
+  (spacemacs/declare-prefix-for-mode 'erlang-mode "r" "refactor-prefix")
+  (spacemacs/set-leader-keys-for-major-mode 'erlang-mode "rrm" 'erl-refactor-rename-mod)
+  (spacemacs/set-leader-keys-for-major-mode 'erlang-mode "rrf" 'erl-refactor-rename-fun)
+  (spacemacs/set-leader-keys-for-major-mode 'erlang-mode "rrv" 'erl-refactor-rename-var)
+  (spacemacs/set-leader-keys-for-major-mode 'erlang-mode "rn" 'erl-refactor-inline-variable)
+  (spacemacs/set-leader-keys-for-major-mode 'erlang-mode "rv" 'erl-refactor-new-variable)
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; for haskell                                                           ;;
@@ -378,10 +374,23 @@ you should place your code here."
   (add-hook 'haskell-mode-hook 'turn-on-haskell-indentation)
   (add-to-list 'exec-path "~/Library/Haskell/bin/")
   (add-hook 'haskell-mode-hook 'structured-haskell-mode)
+  (add-hook 'haskell-mode-hook 'inf-haskell-mode)
   (setq haskell-enable-shm-support t
         company-ghc-turn-on-autoscan t
         shm-use-presentation-mode t
-        haskell-tags-on-save nil)
+        haskell-tags-on-save nil
+        flycheck-disabled-checkers 'haskell-ghc
+        flycheck-haskell-hlint-executable "~/Library/Haskell/bin/hlint"
+        flycheck-checker 'haskell-hlint)
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; sunshine geolocation settings
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  (setq sunshine-appid "e8ec8a2a343baa242eae803d07568d46"
+        sunshine-units 'metric
+        sunshine-show-icons t
+        sunshine-location "Hyderabad, India")
+
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; Python & YouCompleteMe configuration setup                            ;;
@@ -390,28 +399,129 @@ you should place your code here."
   (setq python-shell-interpreter "/usr/local/bin/ipython3")
   (setq python-check-command "/usr/local/bin/pyflakes")
 
-  (add-hook 'ycmd-mode-hook 'company-ycmd-setup)
-  (add-hook 'ycmd-mode-hook 'flycheck-ycmd-setup)
-  ;(global-ycmd-mode)
-  (company-ycmd-setup)
 
-  (set-variable 'ycmd-global-config "")
-  (set-variable
-   'ycmd-server-command
-   '("python3" "/Users/sampathsingamsetty/sw/programming/python/YouCompleteMe/third_party/ycmd/ycmd"))
-  (set-variable 'ycmd-extra-conf-whitelist
-                '("/Users/sampathsingamsetty/sw/programming/*"))
+  (let ((ycmd-dir (expand-file-name "private/.ycmd/" user-emacs-directory)))
+    (if (not (file-exists-p ycmd-dir))
+        (progn
+          (message "Cloning and building YCMD...")
+          (setenv "EXTRA_CMAKE_ARGS"
+                  "-DEXTERNAL_LIBCLANG_PATH=/opt/software/clang+llvm-3.9.0-x86_64-apple-darwin/lib/libclang.dylib")
+          (shell-command (concat "git clone --recursive "
+                                 "https://github.com/Valloric/ycmd.git "
+                                 ycmd-dir
+                                 " && cd "
+                                 ycmd-dir
+                                 " && python3 build.py "
+                                 "--clang-completer "
+                                 "--system-libclang "
+                                 "--gocode-completer "
+                                 "--tern-complete"))
+          (message "ycmd build/compile done..."))
+      (message "YCMD already exists; not cloning"))
+    (set-variable 'ycmd-server-command
+                  (list "python3" (concat ycmd-dir "ycmd/"))))
+  (set-variable 'ycmd-extra-conf-whitelist '("~/sw/programming/python/*"))
   (set-variable 'ycmd-global-modes 'all)
   (set-variable 'ycmd-parse-conditions
                 '(save new-line mode-enabled idle-change buffer-focus))
-
   (set-variable 'ycmd-global-config "/Users/sampathsingamsetty/sw/programming/python/YouCompleteMe/.ycm_extra_conf.py")
   (set-variable 'ycmd-python-binary-path "/usr/local/bin/python3")
-
-  (global-flycheck-mode)
+  (setq ycmd-extra-conf-handler 'load)
+  (add-hook 'ycmd-mode-hook 'company-ycmd-setup)
+  (add-hook 'ycmd-mode-hook 'flycheck-ycmd-setup)
+  (add-hook 'after-init-hook 'global-ycmd-mode)
+  (company-ycmd-setup)
 
   (add-hook 'python-mode-hook
             (lambda () (add-to-list 'flycheck-disabled-checkers 'ycmd)))
+
+
+  ;; ***** old ycmd setup start *****
+  ;; (add-hook 'ycmd-mode-hook 'company-ycmd-setup)
+  ;; (add-hook 'ycmd-mode-hook 'flycheck-ycmd-setup)
+  ;; ;(global-ycmd-mode)
+  ;; (company-ycmd-setup)
+
+  ;; (set-variable 'ycmd-global-config "")
+  ;; (set-variable
+  ;;  'ycmd-server-command
+  ;;  '("python3" "/Users/sampathsingamsetty/sw/programming/python/YouCompleteMe/third_party/ycmd/ycmd"))
+  ;; (set-variable 'ycmd-extra-conf-whitelist
+  ;;               '("/Users/sampathsingamsetty/sw/programming/*"))
+  ;; (set-variable 'ycmd-global-modes 'all)
+  ;; (set-variable 'ycmd-parse-conditions
+  ;;               '(save new-line mode-enabled idle-change buffer-focus))
+
+  ;; (set-variable 'ycmd-global-config "/Users/sampathsingamsetty/sw/programming/python/YouCompleteMe/.ycm_extra_conf.py")
+  ;; (set-variable 'ycmd-python-binary-path "/usr/local/bin/python3")
+
+  ;; (global-flycheck-mode)
+
+  ;; (add-hook 'python-mode-hook
+  ;;           (lambda () (add-to-list 'flycheck-disabled-checkers 'ycmd)))
+  ;; ***** old ycmd end *****
+
+
+  ;;---------------------------------------------------------------------
+  ;; org-mode settings
+  ;;---------------------------------------------------------------------
+  (setq org-bullets-bullet-list '("■" "◆" "▲" "▶"))
+  (setq org-hide-emphasis-markers t)
+  (add-hook 'org-mode-hook #'adaptive-wrap-prefix-mode)
+  (add-hook 'org-mode-hook #'visual-line-mode)
+
+  ;;---------------------------------------------------------------------
+  ;; org-babel settings
+  ;;---------------------------------------------------------------------
+  (org-babel-do-load-languages
+   'org-babel-load-languages
+   '((clojure . t)
+     (sh . t)
+     (emacs-lisp . t)
+     (python . t)
+     (java . t)
+     (js . t)
+     (C . t)
+     (ditaa . t)
+     (plantuml . t)
+     (dot . t)))
+
+  ;; make dot work as graphviz-dot
+  (add-to-list 'org-src-lang-modes '("dot" . graphviz-dot))
+
+  ;; ob-plantuml settings
+  (setq org-plantuml-jar-path
+        (expand-file-name "/usr/local/Cellar/plantuml/1.2017.14/libexec/plantuml.jar"))
+
+  ;; Location where homebrew installed the ditaa
+  (setq org-ditaa-jar-path "/usr/local/Cellar/ditaa/0.10/libexec/ditaa0_10.jar")
+
+  ;;---------------------------------------------------------------------
+  ;; dired+
+  ;;---------------------------------------------------------------------
+  (setq dired-listing-switches "-lhgoBF --group-directories-first")
+  (setq diredp-toggle-find-file-reuse-dir t)
+  (eval-after-load "dired" '(progn
+                              (define-key dired-mode-map (kbd "q") 'kill-this-buffer)
+                              (define-key dired-mode-map (kbd "h") 'dired-up-directory)
+                              (define-key dired-mode-map (kbd "l") 'dired-find-alternate-file)
+                              (define-key dired-mode-map (kbd "o") 'dired-sort-toggle-or-edit)
+                              (define-key dired-mode-map (kbd "v") 'dired-toggle-marks)
+                              (define-key dired-mode-map (kbd "m") 'dired-mark)
+                              (define-key dired-mode-map (kbd "u") 'dired-unmark)
+                              (define-key dired-mode-map (kbd "U") 'dired-unmark-all-marks)
+                              (define-key dired-mode-map (kbd "c") 'dired-create-directory)
+                              ))
+
+  (defadvice dired-advertised-find-file (around dired-subst-directory activate)
+    "Replace current buffer if file is a directory."
+    (interactive)
+    (let ((orig (current-buffer))
+          (filename (dired-get-filename)))
+      ad-do-it
+      (when (and (file-directory-p filename)
+                 (not (eq (current-buffer) orig)))
+        (kill-buffer orig))))
 
   )
 
