@@ -36,6 +36,11 @@ values."
      vimscript
      ;vim-powerline
      (auto-completion :variables
+                      auto-completion-return-key-behavior 'complete
+                      auto-completion-tab-key-behavior 'cycle
+                      auto-completion-complete-with-key-sequence nil
+                      auto-completion-complete-with-key-sequence-delay 0.1
+                      auto-completion-private-snippets-directory nil
                       auto-completion-enable-help-tooltip t
                       auto-completion-enable-snippets-in-popup t
                       auto-complete-mode t)
@@ -62,7 +67,8 @@ values."
               haskell-process-type 'ghci
               haskell-enable-hindent-style "johan-tibell")
      (python :variables
-             python-enable-yapf-format-on-save t)
+             python-enable-yapf-format-on-save t
+             python-sort-imports-on-save t)
      (geolocation :variables
                   geolocation-enable-location-service t
                   geolocation-enable-weather-forecast t)
@@ -85,6 +91,9 @@ values."
      company-ycmd
      flycheck-ycmd
      edts
+     tern
+     tern-auto-complete
+     company-tern
     )
    ;; A list of packages and/or extensions that will not be install and loaded.
    dotspacemacs-excluded-packages '()
@@ -141,14 +150,14 @@ values."
    ;; Press <SPC> T n to cycle to the next theme in the list (works great
    ;; with 2 themes variants, one dark and one light)
    dotspacemacs-themes '(
+                         majapahit-dark
                          spacemacs-light
-                         spacemacs-dark
                          material-light
                          zonokai-blue
                          sanityinc-solarized-light
                          zenburn
                          sanityinc-tomorrow-day
-                         majapahit-dark
+                         spacemacs-dark
                          majapahit-light
                          spolsky
                          farmhouse-light
@@ -308,7 +317,7 @@ before packages are loaded. If you are unsure, you should try in setting them in
 
   ;; custom settings
   ;; write custom settings to a separate file instead of this
-  (setq custom-file (expand-file-name ".custom-settings.el" user-emacs-directory))
+  (setq custom-file (expand-file-name ".custom-settings.el" (concat user-emacs-directory "/tmp")))
   (when (file-exists-p custom-file)
     (load custom-file))
 
@@ -319,6 +328,7 @@ before packages are loaded. If you are unsure, you should try in setting them in
   (setq exec-path-from-shell-check-startup-files nil)
   (set 'erlang-bin (concat erlang-root-dir "/bin/"))
   (set 'erlang-lib (concat erlang-root-dir "/lib/"))
+
   )
 
 (defun dotspacemacs/user-config ()
@@ -328,6 +338,7 @@ layers configuration.
 This is the place where most of your configurations should be done. Unless it is
 explicitly specified that a variable should be set before a package is loaded,
 you should place your code here."
+  ;; if company mode is needed un-coment this
   (global-company-mode)
 
   ;; for Powerline separator
@@ -384,7 +395,7 @@ you should place your code here."
         flycheck-checker 'haskell-hlint)
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;; sunshine geolocation settings
+  ;; sunshine geo location settings
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   (setq sunshine-appid "e8ec8a2a343baa242eae803d07568d46"
         sunshine-units 'metric
@@ -398,6 +409,7 @@ you should place your code here."
   (add-hook 'python-mode-hook 'py-yapf-enable-on-save)
   (setq python-shell-interpreter "/usr/local/bin/ipython3")
   (setq python-check-command "/usr/local/bin/pyflakes")
+
 
 
   (let ((ycmd-dir (expand-file-name "private/.ycmd/" user-emacs-directory)))
@@ -475,16 +487,16 @@ you should place your code here."
   ;;---------------------------------------------------------------------
   (org-babel-do-load-languages
    'org-babel-load-languages
-   '((clojure . t)
-     (sh . t)
+   '((clojure    . t)
+     (sh         . t)
      (emacs-lisp . t)
-     (python . t)
-     (java . t)
-     (js . t)
-     (C . t)
-     (ditaa . t)
-     (plantuml . t)
-     (dot . t)))
+     (python     . t)
+     (java       . t)
+     (js         . t)
+     (C          . t)
+     (ditaa      . t)
+     (plantuml   . t)
+     (dot        . t)))
 
   ;; make dot work as graphviz-dot
   (add-to-list 'org-src-lang-modes '("dot" . graphviz-dot))
@@ -497,9 +509,23 @@ you should place your code here."
   (setq org-ditaa-jar-path "/usr/local/Cellar/ditaa/0.10/libexec/ditaa0_10.jar")
 
   ;;---------------------------------------------------------------------
+  ;; tern for js
+  ;;---------------------------------------------------------------------
+  (add-hook 'js-mode-hook (lambda () (tern-mode t)))
+  (eval-after-load 'company
+    '(add-to-list 'company-backends 'company-tern))
+
+  ;; for auto-complete mode
+  ;;(eval-after-load 'tern
+  ;;  '(progn
+  ;;     (require 'tern-auto-complete)
+  ;;     (tern-ac-setup)))
+
+  ;;---------------------------------------------------------------------
   ;; dired+
   ;;---------------------------------------------------------------------
-  (setq dired-listing-switches "-lhgoBF --group-directories-first")
+  ;(setq dired-listing-switches "-lhgoBF --group-directories-first")
+  (setq dired-listing-switches "-lhgoBF")
   (setq diredp-toggle-find-file-reuse-dir t)
   (eval-after-load "dired" '(progn
                               (define-key dired-mode-map (kbd "q") 'kill-this-buffer)
